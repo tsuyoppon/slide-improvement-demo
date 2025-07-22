@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>スライド改善 学習デモ</title>
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="root"></div>
+
+  <!-- React & Babel (CDN) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- App Code -->
+  <script type="text/babel">
+    const { useState } = React;
+
+    // 改善項目リスト
+    const improvements = [
+      "ピクトグラムを挿入",
+      "小見出しを追加",
+      "文字の強調",
+      "領域の強調",
+      "T1、T2の追加",
+      "応用図解を使う",
+      "文章を階層書きにする",
+      "左から右、上から下",
+      "評価を加える"
+    ];
+
+    const correctSet = new Set([
+      "ピクトグラムを挿入",
+      "小見出しを追加",
+      "領域の強調",
+      "T1、T2の追加",
+      "応用図解を使う",
+      "文章を階層書きにする",
+      "左から右、上から下"
+    ]);
+
+    // 出題ページ
+    function QuizPage({ selected, toggle, submit }) {
+      return (
+        <div className="relative w-full max-w-3xl mx-auto pt-4 pb-32">
+          <img src="881.png" alt="問題スライド" className="w-full h-auto shadow" />
+
+          {/* 改善項目ボタン（フローティング） */}
+          <div className="fixed inset-x-0 bottom-24 flex flex-wrap justify-center gap-2 px-4 z-20">
+            {improvements.map((item) => (
+              <button
+                key={item}
+                onClick={() => toggle(item)}
+                className={`px-3 py-2 rounded-lg shadow transition font-medium whitespace-nowrap ${
+                  selected.includes(item) ? 'bg-orange-600 text-white' : 'bg-orange-300 text-gray-800'
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+
+          {/* 回答ボタン */}
+          <button
+            onClick={submit}
+            className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-10 py-4 rounded-full shadow-lg text-xl z-30"
+          >
+            回答する
+          </button>
+        </div>
+      );
+    }
+
+    // 評価ページ
+    function EvaluationPage({ selected, reset }) {
+      // 採点
+      const rows = improvements.map((item) => {
+        const answered = selected.includes(item);
+        const correct  = correctSet.has(item);
+        const isWrong  = answered !== correct;
+        return { item, answered, correct, isWrong };
+      });
+      const score = rows.filter((r) => !r.isWrong).length;
+
+      return (
+        <div className="relative w-full max-w-3xl mx-auto pt-4 pb-32">
+          {/* 見出し */}
+          <h1 className="text-2xl font-bold text-center mb-2">問題 1</h1>
+
+          {/* スライド画像 */}
+          <img src="881.png" alt="問題スライド" className="w-full h-auto shadow" />
+
+          {/* 評価テーブル */}
+          <div className="overflow-x-auto mt-6">
+            <table className="table-auto w-full text-center border border-gray-400">
+              <thead className="bg-gray-100">
+                <tr>
+                  <th className="border border-gray-400 px-2 py-1">改善項目</th>
+                  <th className="border border-gray-400 px-2 py-1">回答</th>
+                  <th className="border border-gray-400 px-2 py-1">正解</th>
+                  <th className="border border-gray-400 px-2 py-1">✓/✕</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ item, answered, correct, isWrong }) => (
+                  <tr key={item} className={isWrong ? 'bg-red-200' : ''}>
+                    <td className="border border-gray-400 px-1 py-1 text-left">{item}</td>
+                    <td className="border border-gray-400 px-2 py-1">{answered ? '○' : 'ー'}</td>
+                    <td className="border border-gray-400 px-2 py-1">{correct ? '○' : 'ー'}</td>
+                    <td className="border border-gray-400 px-2 py-1">
+                      {isWrong ? '✕' : '✓'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 正解数 */}
+          <p className="mt-6 text-3xl font-extrabold text-center text-indigo-700">
+            あなたの正解数は {score}/{improvements.length}
+          </p>
+
+          {/* 次の問題へ */}
+          <button
+            onClick={reset}
+            className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-green-500 hover:bg-green-600 text-white font-semibold px-10 py-4 rounded-full shadow-lg text-xl z-30"
+          >
+            次の問題に進む
+          </button>
+        </div>
+      );
+    }
+
+    // ルートコンポーネント
+    function App() {
+      const [selected, setSelected] = useState([]);
+      const [page, setPage] = useState("quiz");
+
+      const toggle = (item) => {
+        setSelected((prev) =>
+          prev.includes(item) ? prev.filter((i) => i !== item) : [...prev, item]
+        );
+      };
+
+      const submit = () => setPage("evaluation");
+      const reset = () => {
+        setSelected([]);
+        setPage("quiz");
+      };
+
+      return page === "quiz" ? (
+        <QuizPage selected={selected} toggle={toggle} submit={submit} />
+      ) : (
+        <EvaluationPage selected={selected} reset={reset} />
+      );
+    }
+
+    // マウント
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
