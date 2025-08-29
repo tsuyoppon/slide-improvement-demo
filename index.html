@@ -17,40 +17,33 @@
 
   <!-- App Code -->
   <script type="text/babel">
-    const { useState } = React;
+    const { useState, useEffect } = React;
 
-    // 改善項目リスト
-    const improvements = [
-      "ピクトグラムを挿入",
-      "小見出しを追加",
-      "文字の強調",
-      "領域の強調",
-      "T1、T2の追加",
-      "応用図解を使う",
-      "文章を階層書きにする",
-      "左から右、上から下",
-      "評価を加える"
-    ];
+    // APIベースURL: 同一オリジンで配信中は相対、file:// などではローカルAPIにフォールバック
+    const API_BASE = window.API_BASE || (location.origin && location.origin.startsWith('http') ? '' : 'http://127.0.0.1:8000');
 
-    const correctSet = new Set([
-      "ピクトグラムを挿入",
-      "小見出しを追加",
-      "領域の強調",
-      "T1、T2の追加",
-      "応用図解を使う",
-      "文章を階層書きにする",
-      "左から右、上から下"
-    ]);
+    const resolveUrl = (path) => {
+      if (!path) return null;
+      if (/^https?:\/\//.test(path)) return path;
+      return `${API_BASE}${path}`;
+    };
 
     // 出題ページ
-    function QuizPage({ selected, toggle, submit }) {
+    function QuizPage({ quiz, selected, toggle, submit, loading, error }) {
+      const imageSrc = resolveUrl(quiz?.image_url);
       return (
         <div className="relative w-full max-w-3xl mx-auto pt-4 pb-32">
-          <img src="881.png" alt="問題スライド" className="w-full h-auto shadow" />
+          {loading ? (
+            <div className="w-full h-64 flex items-center justify-center text-gray-600">読み込み中...</div>
+          ) : error ? (
+            <div className="w-full h-64 flex items-center justify-center text-red-600">{error}</div>
+          ) : (
+            <img src={imageSrc} alt="問題スライド" className="w-full h-auto shadow" />
+          )}
 
           {/* 改善項目ボタン（フローティング） */}
           <div className="fixed inset-x-0 bottom-24 flex flex-wrap justify-center gap-2 px-4 z-20">
-            {improvements.map((item) => (
+            {(quiz?.improvements || []).map((item) => (
               <button
                 key={item}
                 onClick={() => toggle(item)}
@@ -75,15 +68,10 @@
     }
 
     // 評価ページ
-    function EvaluationPage({ selected, reset }) {
-      // 採点
-      const rows = improvements.map((item) => {
-        const answered = selected.includes(item);
-        const correct  = correctSet.has(item);
-        const isWrong  = answered !== correct;
-        return { item, answered, correct, isWrong };
-      });
-      const score = rows.filter((r) => !r.isWrong).length;
+    function EvaluationPage({ quiz, gradeResult, reset }) {
+      const rows = gradeResult?.rows || [];
+      const score = gradeResult?.score ?? 0;
+      const total = gradeResult?.total ?? (quiz?.improvements?.length || 0);
 
       return (
         <div className="relative w-full max-w-3xl mx-auto pt-4 pb-32">
@@ -91,7 +79,9 @@
           <h1 className="text-2xl font-bold text-center mb-2">問題 1</h1>
 
           {/* スライド画像 */}
-          <img src="881.png" alt="問題スライド" className="w-full h-auto shadow" />
+          {quiz?.image_url && (
+            <img src={resolveUrl(quiz.image_url)} alt="問題スライド" className="w-full h-auto shadow" />
+          )}
 
           {/* 評価テーブル */}
           <div className="overflow-x-auto mt-6">
@@ -105,13 +95,13 @@
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ item, answered, correct, isWrong }) => (
-                  <tr key={item} className={isWrong ? 'bg-red-200' : ''}>
+                {rows.map(({ item, answered, correct, is_wrong }) => (
+                  <tr key={item} className={is_wrong ? 'bg-red-200' : ''}>
                     <td className="border border-gray-400 px-1 py-1 text-left">{item}</td>
                     <td className="border border-gray-400 px-2 py-1">{answered ? '○' : 'ー'}</td>
                     <td className="border border-gray-400 px-2 py-1">{correct ? '○' : 'ー'}</td>
                     <td className="border border-gray-400 px-2 py-1">
-                      {isWrong ? '✕' : '✓'}
+                      {is_wrong ? '✕' : '✓'}
                     </td>
                   </tr>
                 ))}
@@ -121,7 +111,7 @@
 
           {/* 正解数 */}
           <p className="mt-6 text-3xl font-extrabold text-center text-indigo-700">
-            あなたの正解数は {score}/{improvements.length}
+            あなたの正解数は {score}/{total}
           </p>
 
           {/* 次の問題へ */}
@@ -139,6 +129,66 @@
     function App() {
       const [selected, setSelected] = useState([]);
       const [page, setPage] = useState("quiz");
+      const [quiz, setQuiz] = useState(null);
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState(null);
+      const [gradeResult, setGradeResult] = useState(null);
+      const [allIds, setAllIds] = useState([]);
+
+      const loadQuizById = async (id) => {
+        try {
+          setLoading(true);
+          setError(null);
+          const res = await fetch(`${API_BASE}/api/quiz/${id}`);
+          if (!res.ok) throw new Error(`Failed to fetch quiz ${id}: ${res.status}`);
+          const data = await res.json();
+          setQuiz(data);
+        } catch (e) {
+          setError(e.message || 'クイズの取得に失敗しました');
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      const pickRandomId = (ids, excludeId = null) => {
+        if (!ids || ids.length === 0) return null;
+        if (ids.length === 1) return ids[0];
+        let id;
+        for (let i = 0; i < 10; i++) {
+          id = ids[Math.floor(Math.random() * ids.length)];
+          if (id !== excludeId) break;
+        }
+        return id;
+      };
+
+      useEffect(() => {
+        const bootstrap = async () => {
+          try {
+            setLoading(true);
+            setError(null);
+            // まずIDリストを取得
+            const r = await fetch(`${API_BASE}/api/quiz_ids`);
+            if (!r.ok) throw new Error(`Failed to fetch ids: ${r.status}`);
+            const ids = await r.json();
+            setAllIds(ids);
+            // ランダムに1問取得（フォールバックで /api/quiz）
+            const id = pickRandomId(ids);
+            if (id) {
+              await loadQuizById(id);
+            } else {
+              const res = await fetch(`${API_BASE}/api/quiz`);
+              if (!res.ok) throw new Error(`Failed to fetch quiz: ${res.status}`);
+              const data = await res.json();
+              setQuiz(data);
+            }
+          } catch (e) {
+            setError(e.message || '初期化に失敗しました');
+          } finally {
+            setLoading(false);
+          }
+        };
+        bootstrap();
+      }, []);
 
       const toggle = (item) => {
         setSelected((prev) =>
@@ -146,16 +196,42 @@
         );
       };
 
-      const submit = () => setPage("evaluation");
-      const reset = () => {
-        setSelected([]);
-        setPage("quiz");
+      const submit = async () => {
+        if (!quiz) return;
+        try {
+          const res = await fetch(`${API_BASE}/api/grade`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ quiz_id: quiz.id, selected })
+          });
+          if (!res.ok) throw new Error(`Failed to grade: ${res.status}`);
+          const result = await res.json();
+          setGradeResult(result);
+          setPage("evaluation");
+        } catch (e) {
+          alert(e.message || '採点に失敗しました');
+        }
+      };
+      const reset = async () => {
+        try {
+          const nextId = pickRandomId(allIds, quiz?.id);
+          if (nextId) {
+            await loadQuizById(nextId);
+          } else if (quiz?.id) {
+            // フォールバック: 現在のIDを再取得
+            await loadQuizById(quiz.id);
+          }
+        } finally {
+          setSelected([]);
+          setGradeResult(null);
+          setPage("quiz");
+        }
       };
 
       return page === "quiz" ? (
-        <QuizPage selected={selected} toggle={toggle} submit={submit} />
+        <QuizPage quiz={quiz} selected={selected} toggle={toggle} submit={submit} loading={loading} error={error} />
       ) : (
-        <EvaluationPage selected={selected} reset={reset} />
+        <EvaluationPage quiz={quiz} gradeResult={gradeResult} reset={reset} />
       );
     }
 

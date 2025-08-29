@@ -1,0 +1,12 @@
+.DS_Store
+/*.png
+学習用画像_*/
+backend/.venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dist-info/
+
