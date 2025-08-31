@@ -31,8 +31,64 @@
     // 出題ページ
     function QuizPage({ quiz, selected, toggle, submit, loading, error }) {
       const imageSrc = resolveUrl(quiz?.image_url);
+      const bottomRef = React.useRef(null);
+      const [barHeight, setBarHeight] = React.useState(160);
+      const gridRef = React.useRef(null);
+      const [gridColsStyle, setGridColsStyle] = React.useState(null);
+
+      React.useEffect(() => {
+        const el = bottomRef.current;
+        if (!el) return;
+        const measure = () => {
+          const h = Math.ceil(el.offsetHeight || el.getBoundingClientRect().height || 160);
+          // 余白の取り切れないケースを避けるため、数pxバッファを足す
+          setBarHeight(h + 8);
+        };
+        measure();
+        let ro;
+        if (typeof ResizeObserver !== 'undefined') {
+          ro = new ResizeObserver(() => measure());
+          ro.observe(el);
+        }
+        const onResize = () => measure();
+        window.addEventListener('resize', onResize);
+        // 内容変化直後のレイアウト確定後にも再測定
+        const raf = requestAnimationFrame(measure);
+        return () => {
+          if (ro) ro.disconnect();
+          window.removeEventListener('resize', onResize);
+          cancelAnimationFrame(raf);
+        };
+      }, [quiz, selected]);
+
+      // 最大幅時に2行に揃える: 十分な横幅がある場合は列数=ceil(N/2)を強制
+      React.useEffect(() => {
+        const el = gridRef.current;
+        const items = quiz?.improvements || [];
+        if (!el || items.length === 0) return setGridColsStyle(null);
+
+        const MIN_COL_PX = 140; // ボタンの最小横幅（可読性確保）
+        const apply = () => {
+          const w = el.clientWidth || el.getBoundingClientRect().width || 0;
+          const desiredCols = Math.ceil(items.length / 2);
+          const colWidth = desiredCols > 0 ? w / desiredCols : w;
+          if (colWidth >= MIN_COL_PX) {
+            setGridColsStyle({ gridTemplateColumns: `repeat(${desiredCols}, minmax(0, 1fr))` });
+          } else {
+            setGridColsStyle(null); // 狭いときは通常のレスポンシブ列数に任せる
+          }
+        };
+        apply();
+        const onResize = () => apply();
+        window.addEventListener('resize', onResize);
+        const raf = requestAnimationFrame(apply);
+        return () => {
+          window.removeEventListener('resize', onResize);
+          cancelAnimationFrame(raf);
+        };
+      }, [quiz]);
       return (
-        <div className="relative w-full max-w-3xl mx-auto pt-4 pb-32">
+        <div className="relative w-full max-w-3xl mx-auto pt-3">
           {/* 問題ID（検証用表示） */}
           <p className="text-sm text-center text-gray-600 mb-2">問題ID: {quiz?.id || '-'}</p>
           {loading ? (
@@ -43,28 +99,47 @@
             <img src={imageSrc} alt="問題スライド" className="w-full h-auto shadow" />
           )}
 
-          {/* 改善項目ボタン（フローティング） */}
-          <div className="fixed inset-x-0 bottom-24 flex flex-wrap justify-center gap-2 px-4 z-20">
-            {(quiz?.improvements || []).map((item) => (
-              <button
-                key={item}
-                onClick={() => toggle(item)}
-                className={`px-3 py-2 rounded-lg shadow transition font-medium whitespace-nowrap ${
-                  selected.includes(item) ? 'bg-orange-600 text-white' : 'bg-orange-300 text-gray-800'
-                }`}
-              >
-                {item}
-              </button>
-            ))}
-          </div>
+          {/* 固定ボトムバーの高さだけダミースペースを確保し、画像下部が隠れないようにする */}
+          <div aria-hidden="true" style={{ height: `${barHeight}px` }} />
 
-          {/* 回答ボタン */}
-          <button
-            onClick={submit}
-            className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-10 py-4 rounded-full shadow-lg text-xl z-30"
-          >
-            回答する
-          </button>
+          {/* 下部固定 UI（改善項目グリッド + 回答ボタン） */}
+          <div ref={bottomRef} className="fixed inset-x-0 bottom-0 z-30 bg-white/90 backdrop-blur border-t border-gray-200">
+            <div className="w-full max-w-3xl mx-auto px-4 pt-3 pb-3 pb-[env(safe-area-inset-bottom)]">
+              {/* 改善項目グリッド: 2→3→4列（通常）。十分広い場合はJSで2行になる列数に自動調整 */}
+              <div ref={gridRef} className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 auto-rows-fr" style={gridColsStyle || undefined}>
+                {(quiz?.improvements || []).map((item) => {
+                  const isSelected = selected.includes(item);
+                  return (
+                    <div className="h-full" key={item}>
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={() => toggle(item)}
+                        className={
+                          `w-full h-full min-h-12 px-3 py-2 rounded-md shadow transition text-sm leading-tight break-words focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 ` +
+                          (isSelected
+                            ? 'bg-orange-600 text-white ring-2 ring-orange-700 focus-visible:outline-orange-700'
+                            : 'bg-orange-300 text-gray-800 focus-visible:outline-orange-500')
+                        }
+                      >
+                        {item}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 回答ボタン（セーフエリア対応） */}
+              <div className="mt-3 flex justify-center">
+                <button
+                  onClick={submit}
+                  className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-3 rounded-full shadow-lg text-lg"
+                >
+                  回答する
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       );
     }
@@ -74,9 +149,34 @@
       const rows = gradeResult?.rows || [];
       const score = gradeResult?.score ?? 0;
       const total = gradeResult?.total ?? (quiz?.improvements?.length || 0);
+      const bottomRef = React.useRef(null);
+      const [barHeight, setBarHeight] = React.useState(120);
+
+      React.useEffect(() => {
+        const el = bottomRef.current;
+        if (!el) return;
+        const measure = () => {
+          const h = Math.ceil(el.offsetHeight || el.getBoundingClientRect().height || 120);
+          setBarHeight(h + 8);
+        };
+        measure();
+        let ro;
+        if (typeof ResizeObserver !== 'undefined') {
+          ro = new ResizeObserver(() => measure());
+          ro.observe(el);
+        }
+        const onResize = () => measure();
+        window.addEventListener('resize', onResize);
+        const raf = requestAnimationFrame(measure);
+        return () => {
+          if (ro) ro.disconnect();
+          window.removeEventListener('resize', onResize);
+          cancelAnimationFrame(raf);
+        };
+      }, [rows]);
 
       return (
-        <div className="relative w-full max-w-3xl mx-auto pt-4 pb-32">
+        <div className="relative w-full max-w-3xl mx-auto pt-4">
           {/* 見出し */}
           <h1 className="text-2xl font-bold text-center mb-2">問題ID: {quiz?.id || '-'}</h1>
 
@@ -117,12 +217,19 @@
           </p>
 
           {/* 次の問題へ */}
-          <button
-            onClick={reset}
-            className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-green-500 hover:bg-green-600 text-white font-semibold px-10 py-4 rounded-full shadow-lg text-xl z-30"
-          >
-            次の問題に進む
-          </button>
+          {/* 固定ボタンの高さ分のスペースを確保 */}
+          <div aria-hidden="true" style={{ height: `${barHeight}px` }} />
+
+          <div ref={bottomRef} className="fixed inset-x-0 bottom-0 z-30 bg-white/90 backdrop-blur border-t border-gray-200">
+            <div className="w-full max-w-3xl mx-auto px-4 pt-3 pb-3 pb-[env(safe-area-inset-bottom)] flex justify-center">
+              <button
+                onClick={reset}
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-3 rounded-full shadow-lg text-lg"
+              >
+                次の問題に進む
+              </button>
+            </div>
+          </div>
         </div>
       );
     }
