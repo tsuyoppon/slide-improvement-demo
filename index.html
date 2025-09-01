@@ -28,8 +28,27 @@
       return `${API_BASE}${path}`;
     };
 
+    // 進行状況表示用コンポーネント
+    function ProgressInfo({ current, total, perSet }) {
+      const sets = Math.ceil(total / perSet);
+      const cur = Math.min(current, total);
+      const setNo = Math.ceil(cur / perSet) || 1;
+      const qInSet = ((cur - 1) % perSet) + 1;
+      const pct = total > 0 ? Math.round((cur / total) * 100) : 0;
+      return (
+        <div className="mb-2">
+          <div className="text-sm text-center text-gray-700">
+            セット {setNo}/{sets} ・ 問題 {qInSet}/{perSet} ・ 合計 {cur}/{total}
+          </div>
+          <div className="h-2 bg-gray-200 rounded mt-1 overflow-hidden">
+            <div className="h-full bg-indigo-500" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      );
+    }
+
     // 出題ページ
-    function QuizPage({ quiz, selected, toggle, submit, loading, error }) {
+    function QuizPage({ quiz, selected, toggle, submit, loading, error, progress }) {
       const imageSrc = resolveUrl(quiz?.image_url);
       const bottomRef = React.useRef(null);
       const [barHeight, setBarHeight] = React.useState(160);
@@ -89,6 +108,8 @@
       }, [quiz]);
       return (
         <div className="relative w-full max-w-3xl mx-auto pt-3">
+          {/* 進行状況 */}
+          <ProgressInfo current={progress?.current ?? 1} total={progress?.total ?? 15} perSet={progress?.perSet ?? 5} />
           {/* 問題ID（検証用表示） */}
           <p className="text-sm text-center text-gray-600 mb-2">問題ID: {quiz?.id || '-'}</p>
           {loading ? (
@@ -145,7 +166,7 @@
     }
 
     // 評価ページ
-    function EvaluationPage({ quiz, gradeResult, reset }) {
+    function EvaluationPage({ quiz, gradeResult, next, progress, isLast }) {
       const rows = gradeResult?.rows || [];
       const score = gradeResult?.score ?? 0;
       const total = gradeResult?.total ?? (quiz?.improvements?.length || 0);
@@ -177,6 +198,8 @@
 
       return (
         <div className="relative w-full max-w-3xl mx-auto pt-4">
+          {/* 進行状況（回答後なので current は回答済み数）*/}
+          <ProgressInfo current={progress?.current ?? 1} total={progress?.total ?? 15} perSet={progress?.perSet ?? 5} />
           {/* 見出し */}
           <h1 className="text-2xl font-bold text-center mb-2">問題ID: {quiz?.id || '-'}</h1>
 
@@ -223,11 +246,75 @@
           <div ref={bottomRef} className="fixed inset-x-0 bottom-0 z-30 bg-white/90 backdrop-blur border-t border-gray-200">
             <div className="w-full max-w-3xl mx-auto px-4 pt-3 pb-3 pb-[env(safe-area-inset-bottom)] flex justify-center">
               <button
-                onClick={reset}
+                onClick={next}
                 className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-semibold px-8 py-3 rounded-full shadow-lg text-lg"
               >
-                次の問題に進む
+                {isLast ? '総合評価へ' : '次の問題に進む'}
               </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // 総合評価ページ
+    function FinalSummaryPage({ history, total, perSet, onRetry, onExit }) {
+      const items = history?.[0]?.result?.rows?.map(r => r.item) || [];
+      // 各項目の正答数（answered === correct）合計
+      const perItemCorrect = {};
+      for (const label of items) perItemCorrect[label] = 0;
+      let perfectCount = 0;
+      for (const entry of history) {
+        const rows = entry.result.rows || [];
+        let allCorrect = true;
+        for (const row of rows) {
+          const ok = !row.is_wrong; // answered === correct
+          if (ok) perItemCorrect[row.item] = (perItemCorrect[row.item] || 0) + 1;
+          if (!ok) allCorrect = false;
+        }
+        if (allCorrect) perfectCount += 1;
+      }
+
+      const sets = Math.ceil(total / perSet);
+      const perfectRate = total > 0 ? Math.round((perfectCount / total) * 100) : 0;
+
+      return (
+        <div className="w-full max-w-3xl mx-auto pt-6 pb-28">
+          <h1 className="text-2xl font-bold text-center mb-4">総合評価</h1>
+          <div className="mb-6 text-center text-gray-700">全{sets}セット・合計{total}問の結果</div>
+
+          {/* 各回答項目ごとの正答率 */}
+          <h2 className="text-xl font-semibold mt-4 mb-2">各回答項目の正答率</h2>
+          <div className="space-y-2">
+            {items.map((label) => {
+              const correct = perItemCorrect[label] || 0;
+              const pct = total > 0 ? Math.round((correct / total) * 100) : 0;
+              return (
+                <div key={label} className="bg-white p-3 rounded shadow">
+                  <div className="flex justify-between text-sm">
+                    <div className="font-medium">{label}</div>
+                    <div className="text-gray-600">{correct}/{total}（{pct}%）</div>
+                  </div>
+                  <div className="h-2 bg-gray-200 rounded mt-1 overflow-hidden">
+                    <div className="h-full bg-indigo-500" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* 全項目正解の問題数 */}
+          <h2 className="text-xl font-semibold mt-6 mb-2">全項目で正解した問題</h2>
+          <div className="bg-white p-4 rounded shadow text-center">
+            <div className="text-3xl font-extrabold text-indigo-700 mb-1">{perfectCount}/{total}</div>
+            <div className="text-gray-700">15問に占める割合: {perfectRate}%</div>
+          </div>
+
+          {/* フッターボタン */}
+          <div className="fixed inset-x-0 bottom-0 z-30 bg-white/90 backdrop-blur border-t border-gray-200">
+            <div className="w-full max-w-3xl mx-auto px-4 pt-3 pb-4 pb-[env(safe-area-inset-bottom)] flex gap-3">
+              <button onClick={onExit} className="w-1/2 bg-gray-600 hover:bg-gray-700 text-white font-semibold px-6 py-3 rounded-full shadow">終了</button>
+              <button onClick={onRetry} className="w-1/2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-3 rounded-full shadow">再チャレンジ</button>
             </div>
           </div>
         </div>
@@ -237,12 +324,19 @@
     // ルートコンポーネント
     function App() {
       const [selected, setSelected] = useState([]);
-      const [page, setPage] = useState("quiz");
+      const [page, setPage] = useState("quiz"); // 'quiz' | 'evaluation' | 'final'
       const [quiz, setQuiz] = useState(null);
       const [loading, setLoading] = useState(false);
       const [error, setError] = useState(null);
       const [gradeResult, setGradeResult] = useState(null);
       const [allIds, setAllIds] = useState([]);
+      const [plannedIds, setPlannedIds] = useState([]); // 今回のセッションで出すIDの順序（重複なし）
+      const [currentIndex, setCurrentIndex] = useState(0); // plannedIds のインデックス
+      const [history, setHistory] = useState([]); // { id, result }
+
+      const TOTAL_SETS = 3;
+      const PER_SET = 5;
+      const TOTAL_QUESTIONS = TOTAL_SETS * PER_SET; // 15
 
       const loadQuizById = async (id) => {
         try {
@@ -259,15 +353,15 @@
         }
       };
 
-      const pickRandomId = (ids, excludeId = null) => {
-        if (!ids || ids.length === 0) return null;
-        if (ids.length === 1) return ids[0];
-        let id;
-        for (let i = 0; i < 10; i++) {
-          id = ids[Math.floor(Math.random() * ids.length)];
-          if (id !== excludeId) break;
+      // 重複なしサンプリング（Fisher-Yates）
+      const sampleWithoutReplacement = (arr, n) => {
+        const a = [...arr];
+        const m = Math.min(n, a.length);
+        for (let i = a.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [a[i], a[j]] = [a[j], a[i]];
         }
-        return id;
+        return a.slice(0, m);
       };
 
       useEffect(() => {
@@ -280,10 +374,12 @@
             if (!r.ok) throw new Error(`Failed to fetch ids: ${r.status}`);
             const ids = await r.json();
             setAllIds(ids);
-            // ランダムに1問取得（フォールバックで /api/quiz）
-            const id = pickRandomId(ids);
-            if (id) {
-              await loadQuizById(id);
+            // 15問×重複なしの順序を決定
+            const planned = sampleWithoutReplacement(ids, TOTAL_QUESTIONS);
+            setPlannedIds(planned);
+            setCurrentIndex(0);
+            if (planned.length > 0) {
+              await loadQuizById(planned[0]);
             } else {
               const res = await fetch(`${API_BASE}/api/quiz`);
               if (!res.ok) throw new Error(`Failed to fetch quiz: ${res.status}`);
@@ -316,31 +412,75 @@
           if (!res.ok) throw new Error(`Failed to grade: ${res.status}`);
           const result = await res.json();
           setGradeResult(result);
+          // 履歴に追加
+          setHistory((prev) => [...prev, { id: quiz.id, result }]);
           setPage("evaluation");
         } catch (e) {
           alert(e.message || '採点に失敗しました');
         }
       };
-      const reset = async () => {
-        try {
-          const nextId = pickRandomId(allIds, quiz?.id);
-          if (nextId) {
-            await loadQuizById(nextId);
-          } else if (quiz?.id) {
-            // フォールバック: 現在のIDを再取得
-            await loadQuizById(quiz.id);
+      const goNext = async () => {
+        // 次の問題へ。最後なら総合評価へ。
+        const nextIndex = currentIndex + 1;
+        if (nextIndex < plannedIds.length) {
+          try {
+            await loadQuizById(plannedIds[nextIndex]);
+          } finally {
+            setCurrentIndex(nextIndex);
+            setSelected([]);
+            setGradeResult(null);
+            setPage("quiz");
           }
-        } finally {
-          setSelected([]);
-          setGradeResult(null);
-          setPage("quiz");
+        } else {
+          setPage("final");
         }
       };
 
-      return page === "quiz" ? (
-        <QuizPage quiz={quiz} selected={selected} toggle={toggle} submit={submit} loading={loading} error={error} />
-      ) : (
-        <EvaluationPage quiz={quiz} gradeResult={gradeResult} reset={reset} />
+      const restart = async () => {
+        // 再チャレンジ: 新しい順序で最初から
+        const planned = sampleWithoutReplacement(allIds, TOTAL_QUESTIONS);
+        setPlannedIds(planned);
+        setHistory([]);
+        setSelected([]);
+        setGradeResult(null);
+        setCurrentIndex(0);
+        setPage("quiz");
+        if (planned.length > 0) await loadQuizById(planned[0]);
+      };
+
+      const exitApp = () => {
+        // 可能ならウィンドウを閉じる。不可なら blank へ遷移。
+        window.close();
+        setTimeout(() => { try { location.href = 'about:blank'; } catch (e) {} }, 50);
+      };
+
+      // 進行状況オブジェクト
+      const progressForQuiz = {
+        current: history.length + 1,
+        total: plannedIds.length || TOTAL_QUESTIONS,
+        perSet: PER_SET,
+      };
+      const progressForEval = {
+        current: history.length,
+        total: plannedIds.length || TOTAL_QUESTIONS,
+        perSet: PER_SET,
+      };
+
+      if (page === 'quiz') {
+        return <QuizPage quiz={quiz} selected={selected} toggle={toggle} submit={submit} loading={loading} error={error} progress={progressForQuiz} />
+      }
+      if (page === 'evaluation') {
+        const isLast = (history.length >= (plannedIds.length || TOTAL_QUESTIONS));
+        return <EvaluationPage quiz={quiz} gradeResult={gradeResult} next={goNext} progress={progressForEval} isLast={isLast} />
+      }
+      return (
+        <FinalSummaryPage
+          history={history}
+          total={plannedIds.length || TOTAL_QUESTIONS}
+          perSet={PER_SET}
+          onRetry={restart}
+          onExit={exitApp}
+        />
       );
     }
 
