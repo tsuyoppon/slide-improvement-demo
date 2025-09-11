@@ -330,13 +330,19 @@
       const [error, setError] = useState(null);
       const [gradeResult, setGradeResult] = useState(null);
       const [allIds, setAllIds] = useState([]);
-      const [plannedIds, setPlannedIds] = useState([]); // 今回のセッションで出すIDの順序（重複なし）
-      const [currentIndex, setCurrentIndex] = useState(0); // plannedIds のインデックス
       const [history, setHistory] = useState([]); // { id, result }
+
+      // 新アルゴリズム用状態
+      const [phase, setPhase] = useState("unique_only"); // 'unique_only' | 'mixed'
+      const [newPool, setNewPool] = useState([]); // 未出題のID（シャッフル済み）
+      const [wrongPool, setWrongPool] = useState([]); // 間違えたID集合（重複なしで管理）
+      const [reaskSet, setReaskSet] = useState([]); // 残枠超過時の再出題確定セット
+      const [lastId, setLastId] = useState(null);
 
       const TOTAL_SETS = 3;
       const PER_SET = 5;
       const TOTAL_QUESTIONS = TOTAL_SETS * PER_SET; // 15
+      const INITIAL_UNIQUE = 5; // ご指定
 
       const loadQuizById = async (id) => {
         try {
@@ -364,6 +370,78 @@
         return a.slice(0, m);
       };
 
+      const shuffle = (arr) => sampleWithoutReplacement(arr, arr.length);
+
+      // 次の問題IDを選ぶスケジューラ
+      const chooseNextId = () => {
+        const answered = history.length;
+        const remaining = Math.max(0, TOTAL_QUESTIONS - answered);
+        const last = lastId;
+
+        // 補助: 配列からlast回避で1つ取り出す
+        const pickFromArray = (array, remove = false) => {
+          const candidates = array.filter((id) => id !== last);
+          if (candidates.length === 0) return null;
+          const id = candidates[Math.floor(Math.random() * candidates.length)];
+          if (remove) {
+            const idx = array.indexOf(id);
+            if (idx >= 0) array.splice(idx, 1);
+          }
+          return id;
+        };
+
+        // unique only フェーズ
+        if (phase === 'unique_only') {
+          const np = [...newPool];
+          // newPool から lastId を避けて1つ取り出し
+          const id = pickFromArray(np, true);
+          if (id) {
+            setNewPool(np);
+            // フェーズ遷移判定
+            if (answered + 1 >= INITIAL_UNIQUE || np.length === 0) {
+              setPhase('mixed');
+            }
+            return id;
+          }
+          // 取れなければ混合フェーズへ移行
+          setPhase('mixed');
+        }
+
+        // mixed フェーズ
+        const wrongUnique = Array.from(new Set(wrongPool));
+        let nextReask = [...reaskSet];
+        if (nextReask.length === 0 && wrongUnique.length > remaining) {
+          nextReask = sampleWithoutReplacement(wrongUnique, remaining);
+          setReaskSet(nextReask);
+        }
+
+        // 優先順位: reaskSet -> wrongPool -> newPool -> allIds
+        // 1) reaskSet
+        let id = pickFromArray(nextReask, true);
+        if (id) {
+          setReaskSet(nextReask);
+          return id;
+        }
+        // 2) wrongPool（last回避、removeはしない）
+        id = pickFromArray(wrongUnique, false);
+        if (id) {
+          return id;
+        }
+        // 3) newPool から取得して削除
+        const np2 = [...newPool];
+        id = pickFromArray(np2, true);
+        if (id) {
+          setNewPool(np2);
+          return id;
+        }
+        // 4) フォールバック: allIds から last 回避
+        const fallback = allIds.filter((x) => x !== last);
+        if (fallback.length > 0) {
+          return fallback[Math.floor(Math.random() * fallback.length)];
+        }
+        return null;
+      };
+
       useEffect(() => {
         const bootstrap = async () => {
           try {
@@ -374,17 +452,31 @@
             if (!r.ok) throw new Error(`Failed to fetch ids: ${r.status}`);
             const ids = await r.json();
             setAllIds(ids);
-            // 15問×重複なしの順序を決定
-            const planned = sampleWithoutReplacement(ids, TOTAL_QUESTIONS);
-            setPlannedIds(planned);
-            setCurrentIndex(0);
-            if (planned.length > 0) {
-              await loadQuizById(planned[0]);
-            } else {
+            // 新規出題プールを作成
+            const np = shuffle(ids);
+            setNewPool(np);
+            setPhase('unique_only');
+            setWrongPool([]);
+            setReaskSet([]);
+            setLastId(null);
+
+            // 最初の1問を選択・読み込み
+            let firstId = null;
+            if (np.length > 0) {
+              const npCopy = [...np];
+              firstId = npCopy.shift();
+              setNewPool(npCopy);
+            }
+            if (!firstId) {
+              // フォールバック: /api/quiz
               const res = await fetch(`${API_BASE}/api/quiz`);
               if (!res.ok) throw new Error(`Failed to fetch quiz: ${res.status}`);
               const data = await res.json();
               setQuiz(data);
+              setLastId(data?.id || null);
+            } else {
+              await loadQuizById(firstId);
+              setLastId(firstId);
             }
           } catch (e) {
             setError(e.message || '初期化に失敗しました');
@@ -414,38 +506,67 @@
           setGradeResult(result);
           // 履歴に追加
           setHistory((prev) => [...prev, { id: quiz.id, result }]);
+          // 問題ごとの正誤: 全行正解で「正解」扱い
+          const allCorrect = Array.isArray(result?.rows)
+            ? result.rows.every((r) => !r.is_wrong)
+            : false;
+          setWrongPool((prev) => {
+            const s = new Set(prev);
+            if (allCorrect) {
+              // 克服: 候補から除外
+              s.delete(quiz.id);
+            } else {
+              s.add(quiz.id);
+            }
+            return Array.from(s);
+          });
+          // reaskSetにも入っていたら、正解時は除外
+          if (allCorrect) {
+            setReaskSet((prev) => prev.filter((x) => x !== quiz.id));
+          }
           setPage("evaluation");
         } catch (e) {
           alert(e.message || '採点に失敗しました');
         }
       };
       const goNext = async () => {
-        // 次の問題へ。最後なら総合評価へ。
-        const nextIndex = currentIndex + 1;
-        if (nextIndex < plannedIds.length) {
-          try {
-            await loadQuizById(plannedIds[nextIndex]);
-          } finally {
-            setCurrentIndex(nextIndex);
-            setSelected([]);
-            setGradeResult(null);
-            setPage("quiz");
-          }
-        } else {
+        // 次の問題へ。既定総数に達したら総合評価へ。
+        if (history.length >= TOTAL_QUESTIONS) {
           setPage("final");
+          return;
+        }
+        try {
+          const nextId = chooseNextId();
+          if (!nextId) {
+            setPage("final");
+            return;
+          }
+          await loadQuizById(nextId);
+          setLastId(nextId);
+        } finally {
+          setSelected([]);
+          setGradeResult(null);
+          setPage("quiz");
         }
       };
 
       const restart = async () => {
-        // 再チャレンジ: 新しい順序で最初から
-        const planned = sampleWithoutReplacement(allIds, TOTAL_QUESTIONS);
-        setPlannedIds(planned);
+        // 再チャレンジ: 状態を初期化し、新規プールから開始
+        const np = shuffle(allIds);
+        setNewPool(np);
+        setWrongPool([]);
+        setReaskSet([]);
+        setPhase('unique_only');
         setHistory([]);
         setSelected([]);
         setGradeResult(null);
-        setCurrentIndex(0);
         setPage("quiz");
-        if (planned.length > 0) await loadQuizById(planned[0]);
+        if (np.length > 0) {
+          const first = np[0];
+          await loadQuizById(first);
+          setNewPool(np.slice(1));
+          setLastId(first);
+        }
       };
 
       const exitApp = () => {
@@ -457,12 +578,12 @@
       // 進行状況オブジェクト
       const progressForQuiz = {
         current: history.length + 1,
-        total: plannedIds.length || TOTAL_QUESTIONS,
+        total: TOTAL_QUESTIONS,
         perSet: PER_SET,
       };
       const progressForEval = {
         current: history.length,
-        total: plannedIds.length || TOTAL_QUESTIONS,
+        total: TOTAL_QUESTIONS,
         perSet: PER_SET,
       };
 
@@ -470,13 +591,13 @@
         return <QuizPage quiz={quiz} selected={selected} toggle={toggle} submit={submit} loading={loading} error={error} progress={progressForQuiz} />
       }
       if (page === 'evaluation') {
-        const isLast = (history.length >= (plannedIds.length || TOTAL_QUESTIONS));
+        const isLast = (history.length >= TOTAL_QUESTIONS);
         return <EvaluationPage quiz={quiz} gradeResult={gradeResult} next={goNext} progress={progressForEval} isLast={isLast} />
       }
       return (
         <FinalSummaryPage
           history={history}
-          total={plannedIds.length || TOTAL_QUESTIONS}
+          total={TOTAL_QUESTIONS}
           perSet={PER_SET}
           onRetry={restart}
           onExit={exitApp}
