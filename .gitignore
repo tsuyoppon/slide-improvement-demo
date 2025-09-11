@@ -2,6 +2,10 @@
 /*.png
 学習用画像_*/
 backend/.venv/
+backend/.venv_run/
+.venv_run/
+*.pid
+*.log
 .venv/
 __pycache__/
 *.py[cod]
@@ -9,4 +13,3 @@ __pycache__/
 *.pyd
 *.so
 *.dist-info/
-
