@@ -14,8 +14,6 @@ UI_IMPROVEMENTS: List[str] = [
     "応用図解を使う（グリッド構造にする等）",
     "文章を箇条書きにする",
     "評価を加える",
-    "左から右の流れ、上から下の流れ",
-    "MECEかどうか",
 ]
 
 # UI ラベル -> CSV カラム名
@@ -28,8 +26,6 @@ LABEL_TO_COL = {
     "応用図解を使う（グリッド構造にする等）": "ch6",
     "文章を箇条書きにする": "ch7",
     "評価を加える": "ch8",
-    "左から右の流れ、上から下の流れ": "ch9",
-    "MECEかどうか": "ch10",
 }
 
 
@@ -131,4 +127,3 @@ def load_quizzes(static_dir: str, csv_path: str, images_dir_env: Optional[str] =
             )
 
     return quizzes
-
