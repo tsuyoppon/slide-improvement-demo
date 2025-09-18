@@ -1,0 +1,84 @@
+Transform: AWS::Serverless-2016-10-31
+Description: Slide Quiz serverless API (FastAPI on Lambda)
+
+Parameters:
+  CsvBucketName:
+    Type: String
+    Description: クイズCSVを保存しているS3バケット名
+  CsvObjectKey:
+    Type: String
+    Description: 上記バケット内のCSVオブジェクトキー
+  ImagesBaseUrl:
+    Type: String
+    Description: 画像を配信するCloudFrontもしくはS3静的URL（末尾にディレクトリパスを含める）
+  ImageExtension:
+    Type: String
+    Default: png
+    Description: 画像ファイルの拡張子（ドットなし）
+  ProvisionedConcurrency:
+    Type: Number
+    Default: 1
+    Description: Lambdaをウォーム状態で維持するためのプロビジョンド同時実行数（0で無効）
+
+Conditions:
+  UseProvisionedConcurrency: !Not [!Equals [!Ref ProvisionedConcurrency, 0]]
+
+Globals:
+  Function:
+    Runtime: python3.12
+    Timeout: 10
+    MemorySize: 512
+    Architectures:
+      - x86_64
+
+Resources:
+  SlideQuizHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+        AllowHeaders:
+          - "*"
+
+  SlideQuizFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ..
+      Handler: backend.app.main.handler
+      Description: FastAPI backend for Slide Quiz
+      Environment:
+        Variables:
+          CSV_S3_BUCKET: !Ref CsvBucketName
+          CSV_S3_KEY: !Ref CsvObjectKey
+          IMAGES_BASE_URL: !Ref ImagesBaseUrl
+          IMAGE_EXTENSION: !Ref ImageExtension
+      Events:
+        HttpApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref SlideQuizHttpApi
+            Path: /{proxy+}
+            Method: ANY
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref CsvBucketName
+      AutoPublishAlias: live
+      ProvisionedConcurrencyConfig: !If
+        - UseProvisionedConcurrency
+        - { ProvisionedConcurrentExecutions: !Ref ProvisionedConcurrency }
+        - !Ref AWS::NoValue
+    Metadata:
+      BuildMethod: python3.12
+      BuildProperties:
+        RequirementsFile: backend/requirements.txt
+        Runtime: python3.12
+        WorkingDirectory: ..
+
+Outputs:
+  ApiUrl:
+    Description: デプロイされたAPIのエンドポイントURL
+    Value: !Sub "https://${SlideQuizHttpApi}.execute-api.${AWS::Region}.amazonaws.com"

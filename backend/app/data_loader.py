@@ -1,4 +1,5 @@
 import csv
+import io
 import os
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set
@@ -39,6 +40,7 @@ class QuizDef:
     improvements: List[str]
     correct: Set[str]
     image_relpath: Optional[str]  # STATIC_DIR からの相対パス（URL は /static/<relpath>）
+    image_url: Optional[str] = None  # 外部ホスティングの画像URL
 
 
 def _truthy(value: str) -> bool:
@@ -49,7 +51,12 @@ def _normalize_headers(headers: List[str]) -> List[str]:
     return [h.replace("\ufeff", "").strip() for h in headers]
 
 
-def _find_image_relpath(static_dir: str, quiz_id: str, images_dir_env: Optional[str]) -> Optional[str]:
+def _find_image_relpath(
+    static_dir: str,
+    quiz_id: str,
+    images_dir_env: Optional[str],
+    image_extension: str,
+) -> Optional[str]:
     """static_dir 配下で見つかった画像への相対パスを返す。見つからなければ None。
     優先順位:
       1) IMAGES_DIR/quiz_id.png
@@ -57,16 +64,17 @@ def _find_image_relpath(static_dir: str, quiz_id: str, images_dir_env: Optional[
       3) static_dir/**/quiz_id.png（サブディレクトリ探索、深さ1）
     """
     candidates: List[str] = []
+    filename = f"{quiz_id}.{image_extension.lstrip('.')}"
     if images_dir_env:
-        candidates.append(os.path.join(images_dir_env, f"{quiz_id}.png"))
-    candidates.append(os.path.join(static_dir, f"{quiz_id}.png"))
+        candidates.append(os.path.join(images_dir_env, filename))
+    candidates.append(os.path.join(static_dir, filename))
 
     # 深さ1のサブディレクトリも見る
     try:
         for name in os.listdir(static_dir):
             sub = os.path.join(static_dir, name)
             if os.path.isdir(sub):
-                candidates.append(os.path.join(sub, f"{quiz_id}.png"))
+                candidates.append(os.path.join(sub, filename))
     except FileNotFoundError:
         pass
 
@@ -82,23 +90,46 @@ def _find_image_relpath(static_dir: str, quiz_id: str, images_dir_env: Optional[
     return None
 
 
-def load_quizzes(static_dir: str, csv_path: str, images_dir_env: Optional[str] = None) -> Dict[str, QuizDef]:
+def _build_image_url(images_base_url: Optional[str], quiz_id: str, image_extension: str) -> Optional[str]:
+    if not images_base_url:
+        return None
+    base = images_base_url.rstrip("/")
+    ext = image_extension.lstrip(".")
+    return f"{base}/{quiz_id}.{ext}"
+
+
+def load_quizzes(
+    static_dir: str,
+    csv_path: Optional[str],
+    images_dir_env: Optional[str] = None,
+    *,
+    csv_text: Optional[str] = None,
+    images_base_url: Optional[str] = None,
+    image_extension: str = "png",
+) -> Dict[str, QuizDef]:
     quizzes: Dict[str, QuizDef] = {}
-    if not os.path.isfile(csv_path):
+
+    def _open_stream() -> Optional[io.TextIOBase]:
+        if csv_text is not None:
+            return io.StringIO(csv_text)
+        if csv_path and os.path.isfile(csv_path):
+            return open(csv_path, "r", encoding="utf-8", errors="replace", newline="")
+        return None
+
+    stream = _open_stream()
+    if stream is None:
         return quizzes
 
-    with open(csv_path, "r", encoding="utf-8", errors="replace", newline="") as f:
+    with stream as f:
         rdr = csv.reader(f)
         try:
             headers = _normalize_headers(next(rdr))
         except StopIteration:
             return quizzes
 
-        # 列インデックスを引けるように
         idx = {h: i for i, h in enumerate(headers)}
         id_key = "ID" if "ID" in idx else ("id" if "id" in idx else None)
         if id_key is None:
-            # BOM 付きのケース
             for k in list(idx.keys()):
                 if k.lower().endswith("id"):
                     id_key = k
@@ -121,14 +152,15 @@ def load_quizzes(static_dir: str, csv_path: str, images_dir_env: Optional[str] =
                 if _truthy(val):
                     correct.add(label)
 
-            image_rel = _find_image_relpath(static_dir, quiz_id, images_dir_env)
+            image_rel = _find_image_relpath(static_dir, quiz_id, images_dir_env, image_extension)
+            image_url = _build_image_url(images_base_url, quiz_id, image_extension)
 
             quizzes[quiz_id] = QuizDef(
                 id=quiz_id,
                 improvements=list(UI_IMPROVEMENTS),
                 correct=correct,
                 image_relpath=image_rel,
+                image_url=image_url,
             )
 
     return quizzes
-
