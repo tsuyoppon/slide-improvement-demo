@@ -13,3 +13,6 @@ __pycache__/
 *.pyd
 *.so
 *.dist-info/
+
+# AWS SAM build artifacts
+deployment/.aws-sam/
