@@ -15,6 +15,14 @@ Parameters:
     Type: String
     Default: png
     Description: 画像ファイルの拡張子（ドットなし）
+  CognitoUserPoolId:
+    Type: String
+    Description: 認証に使用するCognitoユーザープールID
+    Default: us-east-1_I9CyURMHE
+  CognitoUserPoolClientId:
+    Type: String
+    Description: 認証に使用するCognitoアプリクライアントID
+    Default: 7bmla7ef7gn54hnik43b3glqa2
   ProvisionedConcurrency:
     Type: Number
     Default: 1
@@ -32,6 +40,38 @@ Globals:
       - x86_64
 
 Resources:
+  QuizSessionTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: session_end_ts
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: session_end_ts
+          KeyType: RANGE
+      TableName: !Sub "${AWS::StackName}-SessionSummary"
+
+  UserStatsTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      TableName: !Sub "${AWS::StackName}-UserStats"
+
   SlideQuizHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -56,6 +96,11 @@ Resources:
           CSV_S3_KEY: !Ref CsvObjectKey
           IMAGES_BASE_URL: !Ref ImagesBaseUrl
           IMAGE_EXTENSION: !Ref ImageExtension
+          COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
+          COGNITO_APP_CLIENT_ID: !Ref CognitoUserPoolClientId
+          COGNITO_REGION: !Ref AWS::Region
+          SESSION_TABLE_NAME: !Ref QuizSessionTable
+          USER_STATS_TABLE_NAME: !Ref UserStatsTable
       Events:
         HttpApi:
           Type: HttpApi
@@ -66,6 +111,10 @@ Resources:
       Policies:
         - S3ReadPolicy:
             BucketName: !Ref CsvBucketName
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QuizSessionTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserStatsTable
       AutoPublishAlias: live
       ProvisionedConcurrencyConfig: !If
         - UseProvisionedConcurrency
@@ -82,3 +131,9 @@ Outputs:
   ApiUrl:
     Description: デプロイされたAPIのエンドポイントURL
     Value: !Sub "https://${SlideQuizHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  SessionTableNameOutput:
+    Description: セッション履歴を保存するDynamoDBテーブル名
+    Value: !Ref QuizSessionTable
+  UserStatsTableNameOutput:
+    Description: ユーザー集計情報を保存するDynamoDBテーブル名
+    Value: !Ref UserStatsTable
