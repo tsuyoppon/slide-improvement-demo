@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>サインイン処理中...</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      margin: 0;
+      background: #f3f4f6;
+      color: #1f2937;
+      text-align: center;
+      padding: 16px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 32px 24px;
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.1);
+      max-width: 420px;
+      width: 100%;
+    }
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 6px solid #d1d5db;
+      border-top-color: #2563eb;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 24px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    code {
+      word-break: break-all;
+      background: #f9fafb;
+      padding: 4px 8px;
+      border-radius: 6px;
+      display: inline-block;
+      margin-top: 8px;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="spinner" aria-hidden="true"></div>
+    <h1>サインイン処理中...</h1>
+    <p id="message">認証情報を処理しています。</p>
+    <p id="details" hidden><code></code></p>
+  </div>
+  <script>
+    (function handleCallback() {
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const storage = window.sessionStorage;
+
+      const code = searchParams.get("code");
+      const state = searchParams.get("state");
+      const idToken = hashParams.get("id_token");
+      const accessToken = hashParams.get("access_token");
+      const error = searchParams.get("error") || hashParams.get("error");
+
+      const messageEl = document.getElementById("message");
+      const detailsEl = document.getElementById("details");
+      const detailsCodeEl = detailsEl.querySelector("code");
+
+      if (error) {
+        const errorDescription = searchParams.get("error_description") || hashParams.get("error_description") || "認証エラーが発生しました。";
+        messageEl.textContent = "サインインに失敗しました。";
+        detailsCodeEl.textContent = decodeURIComponent(errorDescription);
+        detailsEl.hidden = false;
+        console.error("Cognito callback error:", error, errorDescription);
+        return;
+      }
+
+      if (state) {
+        storage.setItem("auth.state", state);
+      }
+
+      if (code) {
+        storage.setItem("auth.code", code);
+      }
+
+      if (idToken) {
+        storage.setItem("auth.idToken", idToken);
+      }
+
+      if (accessToken) {
+        storage.setItem("auth.accessToken", accessToken);
+      }
+
+      if (!(code || idToken || accessToken)) {
+        messageEl.textContent = "有効な認証情報を受け取れませんでした。";
+        detailsCodeEl.textContent = window.location.href;
+        detailsEl.hidden = false;
+        console.warn("No auth data found in callback URL.");
+        return;
+      }
+
+      // クエリとハッシュをクリアした URL へリダイレクト
+      const redirectTarget = storage.getItem("auth.postRedirect") || "/";
+      storage.removeItem("auth.postRedirect");
+
+      messageEl.textContent = "サインイン完了。画面を切り替えています…";
+      setTimeout(() => {
+        window.location.replace(redirectTarget);
+      }, 600);
+    })();
+  </script>
+</body>
+</html>

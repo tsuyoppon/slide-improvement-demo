@@ -40,38 +40,6 @@ Globals:
       - x86_64
 
 Resources:
-  QuizSessionTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: user_id
-          AttributeType: S
-        - AttributeName: session_end_ts
-          AttributeType: S
-      KeySchema:
-        - AttributeName: user_id
-          KeyType: HASH
-        - AttributeName: session_end_ts
-          KeyType: RANGE
-      TableName: !Sub "${AWS::StackName}-SessionSummary"
-
-  UserStatsTable:
-    Type: AWS::DynamoDB::Table
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: user_id
-          AttributeType: S
-      KeySchema:
-        - AttributeName: user_id
-          KeyType: HASH
-      TableName: !Sub "${AWS::StackName}-UserStats"
-
   SlideQuizHttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
@@ -87,8 +55,8 @@ Resources:
   SlideQuizFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ..
-      Handler: backend.app.main.handler
+      CodeUri: ../backend
+      Handler: app.main.handler
       Description: FastAPI backend for Slide Quiz
       Environment:
         Variables:
@@ -98,9 +66,9 @@ Resources:
           IMAGE_EXTENSION: !Ref ImageExtension
           COGNITO_USER_POOL_ID: !Ref CognitoUserPoolId
           COGNITO_APP_CLIENT_ID: !Ref CognitoUserPoolClientId
-          COGNITO_REGION: !Ref AWS::Region
-          SESSION_TABLE_NAME: !Ref QuizSessionTable
-          USER_STATS_TABLE_NAME: !Ref UserStatsTable
+          COGNITO_REGION: us-east-1
+          SESSION_TABLE_NAME: slidequiz-api-SessionSummary
+          USER_STATS_TABLE_NAME: slidequiz-api-UserStats
       Events:
         HttpApi:
           Type: HttpApi
@@ -112,9 +80,9 @@ Resources:
         - S3ReadPolicy:
             BucketName: !Ref CsvBucketName
         - DynamoDBCrudPolicy:
-            TableName: !Ref QuizSessionTable
+            TableName: slidequiz-api-SessionSummary
         - DynamoDBCrudPolicy:
-            TableName: !Ref UserStatsTable
+            TableName: slidequiz-api-UserStats
       AutoPublishAlias: live
       ProvisionedConcurrencyConfig: !If
         - UseProvisionedConcurrency
@@ -122,10 +90,6 @@ Resources:
         - !Ref AWS::NoValue
     Metadata:
       BuildMethod: python3.12
-      BuildProperties:
-        RequirementsFile: backend/requirements.txt
-        Runtime: python3.12
-        WorkingDirectory: ..
 
 Outputs:
   ApiUrl:
@@ -133,7 +97,7 @@ Outputs:
     Value: !Sub "https://${SlideQuizHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
   SessionTableNameOutput:
     Description: セッション履歴を保存するDynamoDBテーブル名
-    Value: !Ref QuizSessionTable
+    Value: slidequiz-api-SessionSummary
   UserStatsTableNameOutput:
     Description: ユーザー集計情報を保存するDynamoDBテーブル名
-    Value: !Ref UserStatsTable
+    Value: slidequiz-api-UserStats

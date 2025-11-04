@@ -1,13 +1,22 @@
 import os
 from typing import List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from mangum import Mangum
 
 from .schemas import QuizItem, GradeRequest, GradeResult, RowResult
 from .data_loader import load_quizzes, UI_IMPROVEMENTS
+from .auth import get_current_user
+from .models import (
+    QuizSession,
+    SaveSessionRequest,
+    SessionHistoryResponse,
+    UserStatsResponse,
+    QuestionResult,
+)
+from .db_service import SessionService, StatsService
 
 
 # Dev CORS (allow all for local testing)
@@ -134,6 +143,97 @@ def get_quiz_by_id(quiz_id: str) -> QuizItem:
 @app.get("/api/quiz_ids", response_model=List[str])
 def list_quiz_ids() -> List[str]:
     return list(_QUIZZES.keys())
+
+
+# ========================================
+# 認証が必要なエンドポイント
+# ========================================
+
+@app.post("/api/session/save")
+async def save_quiz_session(
+    request: SaveSessionRequest,
+    user: dict = Depends(get_current_user)
+) -> dict:
+    """
+    クイズセッションを保存
+    
+    Authorization: Bearer <id_token> ヘッダーが必要
+    """
+    user_id = user["sub"]  # Cognito の user_id
+    
+    # リクエストから正解数を計算
+    total_questions = len(request.questions)
+    correct_answers = sum(1 for q in request.questions if q.is_correct)
+    
+    # セッションオブジェクトを作成
+    session = QuizSession.create_new(
+        user_id=user_id,
+        total_questions=total_questions,
+        correct_answers=correct_answers,
+        questions=request.questions,
+        session_start_ts=request.session_start_ts,
+        time_spent_seconds=request.time_spent_seconds
+    )
+    
+    # DynamoDB に保存
+    session_service = SessionService()
+    session_service.save_session(session)
+    
+    # ユーザー統計を更新
+    stats_service = StatsService()
+    user_stats = stats_service.get_or_create_stats(user_id)
+    user_stats.update_with_session(session)
+    stats_service.update_user_stats(user_stats)
+    
+    return {
+        "success": True,
+        "session_id": session.session_end_ts,
+        "score": session.score_percentage
+    }
+
+
+@app.get("/api/history", response_model=SessionHistoryResponse)
+async def get_session_history(
+    user: dict = Depends(get_current_user),
+    limit: int = 50
+) -> SessionHistoryResponse:
+    """
+    ユーザーのクイズ実行履歴を取得
+    
+    Authorization: Bearer <id_token> ヘッダーが必要
+    """
+    user_id = user["sub"]
+    
+    session_service = SessionService()
+    sessions, _ = session_service.get_user_sessions(user_id, limit=limit)
+    
+    return SessionHistoryResponse(
+        sessions=sessions,
+        total_count=len(sessions)
+    )
+
+
+@app.get("/api/stats", response_model=UserStatsResponse)
+async def get_user_stats(
+    user: dict = Depends(get_current_user)
+) -> UserStatsResponse:
+    """
+    ユーザーの統計情報と最近のセッションを取得
+    
+    Authorization: Bearer <id_token> ヘッダーが必要
+    """
+    user_id = user["sub"]
+    
+    stats_service = StatsService()
+    session_service = SessionService()
+    
+    user_stats = stats_service.get_or_create_stats(user_id)
+    recent_sessions = session_service.get_recent_sessions(user_id, limit=5)
+    
+    return UserStatsResponse(
+        stats=user_stats,
+        recent_sessions=recent_sessions
+    )
 
 
 handler = Mangum(app)

@@ -1,4 +1,3 @@
 fastapi==0.112.0
 mangum==0.17.0
 boto3==1.34.162
-python-jose[cryptography]==3.3.0

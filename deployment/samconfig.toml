@@ -1,0 +1,13 @@
+version = 0.1
+
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "slidequiz-api"
+s3_bucket = "slidequiz-sam-artifacts-20250918235346"
+s3_prefix = "slidequiz-api"
+region = "ap-northeast-1"
+confirm_changeset = false
+capabilities = "CAPABILITY_IAM"
+disable_rollback = false
+parameter_overrides = "CsvBucketName=\"slidequiz-assets-20250918231053\" CsvObjectKey=\"data/Rubato_labels_converted_trial4.csv\" ImagesBaseUrl=\"https://d2i6vi3986p0t3.cloudfront.net/images\" ImageExtension=\"png\" ProvisionedConcurrency=\"0\""
