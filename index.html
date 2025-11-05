@@ -697,14 +697,20 @@
         const questions = history.map(item => {
           const { id, result } = item;
           // resultには { score, total, rows } が含まれる
-          // すべての項目が正解かどうかを判定
+          const rows = result?.rows || [];
           const isAllCorrect = result.score === result.total;
-          
+
           return {
             question_id: id,
             user_answer: 'multiple_choice', // 複数選択式
             correct_answer: 'all_items_correct', // 全項目正解が正答
-            is_correct: isAllCorrect
+            is_correct: isAllCorrect,
+            improvements: rows.map(row => ({
+              label: row.item,
+              answered: row.answered,
+              correct: row.correct,
+              is_correct: !row.is_wrong
+            }))
           };
         });
         

@@ -6,6 +6,14 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 
 
+class ImprovementItemResult(BaseModel):
+    """改善項目ごとの解答状況"""
+    label: str
+    answered: bool
+    correct: bool
+    is_correct: bool
+
+
 class QuestionResult(BaseModel):
     """個別の問題結果"""
     question_id: str
@@ -13,6 +21,7 @@ class QuestionResult(BaseModel):
     correct_answer: str
     is_correct: bool
     time_spent_seconds: Optional[int] = None
+    improvements: List[ImprovementItemResult] = Field(default_factory=list)
 
 
 class QuizSession(BaseModel):
