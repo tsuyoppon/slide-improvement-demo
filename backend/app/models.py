@@ -2,7 +2,7 @@
 DynamoDB モデル定義
 """
 from datetime import datetime
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -71,6 +71,7 @@ class UserStats(BaseModel):
     best_score: float = 0.0
     last_quiz_date: Optional[str] = None
     updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    improvement_item_stats: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     
     def update_with_session(self, session: QuizSession) -> None:
         """セッション結果で統計を更新"""

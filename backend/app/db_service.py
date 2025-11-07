@@ -6,7 +6,7 @@ from typing import List, Optional
 from decimal import Decimal
 import boto3
 from boto3.dynamodb.conditions import Key
-from .models import QuizSession, UserStats, QuestionResult
+from .models import QuizSession, UserStats
 
 # 環境変数から設定を取得
 SESSION_TABLE_NAME = os.environ.get("SESSION_TABLE_NAME")
@@ -108,8 +108,24 @@ class StatsService:
         
         return UserStats(**_decimal_to_float(response["Item"]))
     
-    def update_user_stats(self, stats: UserStats) -> None:
+    def update_user_stats(self, stats: UserStats, session: Optional[QuizSession] = None) -> None:
         """ユーザー統計を更新"""
+        if session and session.questions:
+            for question in session.questions:
+                if not question.improvements:
+                    continue
+                for improvement in question.improvements:
+                    label = improvement.label
+                    if not label:
+                        continue
+                    item_stats = stats.improvement_item_stats.setdefault(
+                        label,
+                        {"correct": 0, "attempts": 0},
+                    )
+                    item_stats["attempts"] += 1
+                    if improvement.is_correct:
+                        item_stats["correct"] += 1
+
         item = _float_to_decimal(stats.model_dump())
         self.table.put_item(Item=item)
     

@@ -183,7 +183,7 @@ async def save_quiz_session(
     stats_service = StatsService()
     user_stats = stats_service.get_or_create_stats(user_id)
     user_stats.update_with_session(session)
-    stats_service.update_user_stats(user_stats)
+    stats_service.update_user_stats(user_stats, session)
     
     return {
         "success": True,
