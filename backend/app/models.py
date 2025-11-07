@@ -1,9 +1,14 @@
 """
 DynamoDB モデル定義
 """
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
+
+
+def _utc_now_iso() -> str:
+    """UTC現在時刻をISO8601のZ表記で返す"""
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 class ImprovementItemResult(BaseModel):
@@ -47,7 +52,7 @@ class QuizSession(BaseModel):
         time_spent_seconds: Optional[int] = None
     ) -> "QuizSession":
         """新しいセッションを作成"""
-        now = datetime.utcnow().isoformat() + "Z"
+        now = _utc_now_iso()
         
         return cls(
             user_id=user_id,
@@ -70,7 +75,7 @@ class UserStats(BaseModel):
     average_score: float = 0.0
     best_score: float = 0.0
     last_quiz_date: Optional[str] = None
-    updated_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    updated_at: str = Field(default_factory=_utc_now_iso)
     improvement_item_stats: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     
     def update_with_session(self, session: QuizSession) -> None:
@@ -90,7 +95,7 @@ class UserStats(BaseModel):
         
         # 最終受験日を更新
         self.last_quiz_date = session.session_end_ts
-        self.updated_at = datetime.utcnow().isoformat() + "Z"
+        self.updated_at = _utc_now_iso()
 
 
 class SaveSessionRequest(BaseModel):

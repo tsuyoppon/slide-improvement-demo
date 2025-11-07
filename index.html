@@ -352,6 +352,32 @@
       const [sessionHistory, setSessionHistory] = useState([]);
       const [loading, setLoading] = useState(true);
       const [error, setError] = useState(null);
+      const getImprovementEntries = React.useCallback((rawStats) => {
+        if (!rawStats || !rawStats.improvement_item_stats) return [];
+        return Object.entries(rawStats.improvement_item_stats).map(([label, counters]) => {
+          const attempts = counters?.attempts ?? 0;
+          const correct = counters?.correct ?? 0;
+          const accuracy = attempts > 0 ? Math.round((correct / attempts) * 100) : 0;
+          let status = '要復習';
+          let tone = 'bg-red-100 text-red-700 border-red-200';
+          if (accuracy >= 80) {
+            status = '得意';
+            tone = 'bg-green-100 text-green-700 border-green-200';
+          } else if (accuracy >= 70) {
+            status = '伸びしろ';
+            tone = 'bg-yellow-100 text-yellow-700 border-yellow-200';
+          }
+          return {
+            label,
+            attempts,
+            correct,
+            accuracy,
+            status,
+            tone
+          };
+        });
+      }, []);
+      const improvementEntries = getImprovementEntries(stats);
       
       useEffect(() => {
         const fetchData = async () => {
@@ -445,6 +471,41 @@
               )}
             </div>
           )}
+
+          {/* 改善項目別統計 */}
+          <div className="bg-white rounded-lg shadow p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">改善項目別の正答率</h2>
+              <span className="text-xs text-gray-500">再度学習すると最新データが反映されます</span>
+            </div>
+            {improvementEntries.length === 0 ? (
+              <div className="text-gray-600 text-center py-4">
+                改善項目の学習データがまだありません
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {improvementEntries.map((entry) => (
+                  <div key={entry.label} className="border border-gray-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold text-gray-800">{entry.label}</div>
+                        <div className="text-sm text-gray-500">正答 {entry.correct} / {entry.attempts}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-indigo-700">{entry.accuracy}%</div>
+                        <span className={`inline-block mt-1 px-2 py-1 text-xs font-semibold rounded-full border ${entry.tone}`}>
+                          {entry.status}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="h-2 bg-gray-200 rounded mt-3 overflow-hidden">
+                      <div className="h-full bg-indigo-500" style={{ width: `${entry.accuracy}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
           
           {/* 最近のセッション */}
           <div className="bg-white rounded-lg shadow p-6">

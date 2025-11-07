@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MyPage Sample</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+  <div id="sample-root" class="max-w-3xl mx-auto py-6"></div>
+
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+    const { useMemo } = React;
+
+    const dummyStats = {
+      total_sessions: 6,
+      total_questions_answered: 90,
+      total_correct_answers: 68,
+      average_score: 75.6,
+      best_score: 92.0,
+      last_quiz_date: new Date().toISOString(),
+      improvement_item_stats: {
+        "配色を整える": { attempts: 12, correct: 10 },
+        "文字サイズを調整": { attempts: 15, correct: 9 },
+        "レイアウトを揃える": { attempts: 14, correct: 11 },
+        "アイコンの統一": { attempts: 8, correct: 5 }
+      }
+    };
+
+    const SampleMyPage = () => {
+      const improvementEntries = useMemo(() =>
+        Object.entries(dummyStats.improvement_item_stats).map(([label, counters]) => {
+          const attempts = counters?.attempts ?? 0;
+          const correct = counters?.correct ?? 0;
+          const accuracy = attempts > 0 ? Math.round((correct / attempts) * 100) : 0;
+          let status = "要復習";
+          let tone = "bg-red-100 text-red-700 border border-red-200";
+          if (accuracy >= 80) {
+            status = "得意";
+            tone = "bg-green-100 text-green-700 border border-green-200";
+          } else if (accuracy >= 70) {
+            status = "伸びしろ";
+            tone = "bg-yellow-100 text-yellow-700 border border-yellow-200";
+          }
+          return { label, attempts, correct, accuracy, status, tone };
+        })
+      , []);
+
+      return (
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">改善項目別の正答率</h2>
+            <span className="text-xs text-gray-500">表示サンプル（ダミーデータ）</span>
+          </div>
+          <div className="space-y-3">
+            {improvementEntries.map((entry) => (
+              <div key={entry.label} className="border border-gray-200 rounded-lg p-4 bg-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold text-gray-800">{entry.label}</div>
+                    <div className="text-sm text-gray-500">正答 {entry.correct} / {entry.attempts}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-indigo-700">{entry.accuracy}%</div>
+                    <span className={`inline-block mt-1 px-2 py-1 text-xs font-semibold rounded-full ${entry.tone}`}>
+                      {entry.status}
+                    </span>
+                  </div>
+                </div>
+                <div className="h-2 bg-gray-200 rounded mt-3 overflow-hidden">
+                  <div className="h-full bg-indigo-500" style={{ width: `${entry.accuracy}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById("sample-root")).render(<SampleMyPage />);
+  </script>
+</body>
+</html>
