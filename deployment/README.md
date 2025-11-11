@@ -45,6 +45,12 @@
 3. 静的フロントエンド（`index.html` 等）を別バケットに配置する場合、同じディストリビューションで別オリジンとして追加するか、別ディストリビューションを用意します。
 4. 作成後、CloudFront の URL（例: `https://d2i6vi3986p0t3.cloudfront.net`）を控え、画像配信パス（例: `https://d2i6vi3986p0t3.cloudfront.net/images`）を `IMAGES_BASE_URL` として利用します。
 
+### CloudFront Function での `/login` リダイレクト
+
+- `deployment/cloudfront-function.js` では、`/login` へのアクセスを Cognito Hosted UI に 302 リダイレクトし、その他のディレクトリアクセスには `index.html` を付与します。
+- 更新後に `deployment/setup_cloudfront_function.sh` を実行すると、関数コードの更新・公開とディストリビューションへの関連付けが行われます（CloudFront の反映には数分かかる場合があります）。
+- Cognito の Hosted UI URL を変更する場合は、同ファイル内の `cognitoLoginUrl` を編集し、再度スクリプトを実行してください。
+
 ## 4. SAM テンプレートで API をデプロイ
 
 1. プロジェクトルートで以下を実行します。

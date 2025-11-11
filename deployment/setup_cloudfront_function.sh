@@ -23,12 +23,24 @@ if [ -z "$FUNCTION_EXISTS" ]; then
     # CloudFront Function を作成
     FUNCTION_ARN=$(aws cloudfront create-function \
         --name "$FUNCTION_NAME" \
-        --function-config Comment="Rewrite URIs to add index.html for directory access",Runtime="cloudfront-js-2.0" \
+        --function-config Comment="Redirect /login to Cognito and rewrite directory URIs",Runtime="cloudfront-js-2.0" \
         --function-code fileb://"$SCRIPT_DIR/cloudfront-function.js" \
         --query "FunctionSummary.FunctionMetadata.FunctionARN" \
         --output text)
     
     echo "✅ 関数を作成しました: $FUNCTION_ARN"
+else
+    echo "♻️  既存の関数を更新します"
+    CURRENT_ETAG=$(aws cloudfront describe-function --name "$FUNCTION_NAME" --query "ETag" --output text)
+    UPDATE_RESULT=$(aws cloudfront update-function \
+        --name "$FUNCTION_NAME" \
+        --if-match "$CURRENT_ETAG" \
+        --function-config Comment="Redirect /login to Cognito and rewrite directory URIs",Runtime="cloudfront-js-2.0" \
+        --function-code fileb://"$SCRIPT_DIR/cloudfront-function.js" \
+        --query "FunctionSummary.FunctionMetadata.FunctionARN" \
+        --output text)
+    FUNCTION_ARN=$UPDATE_RESULT
+    echo "✅ 関数コードを更新しました: $FUNCTION_ARN"
 fi
 
 # 関数を公開するためにETagを取得
