@@ -69,6 +69,7 @@ Resources:
           COGNITO_REGION: us-east-1
           SESSION_TABLE_NAME: slidequiz-api-SessionSummary
           USER_STATS_TABLE_NAME: slidequiz-api-UserStats
+          USER_DAILY_ACTIVITY_TABLE_NAME: slidequiz-api-UserDailyActivity
       Events:
         HttpApi:
           Type: HttpApi
@@ -83,6 +84,8 @@ Resources:
             TableName: slidequiz-api-SessionSummary
         - DynamoDBCrudPolicy:
             TableName: slidequiz-api-UserStats
+        - DynamoDBCrudPolicy:
+          TableName: slidequiz-api-UserDailyActivity
       AutoPublishAlias: live
       ProvisionedConcurrencyConfig: !If
         - UseProvisionedConcurrency
@@ -90,6 +93,22 @@ Resources:
         - !Ref AWS::NoValue
     Metadata:
       BuildMethod: python3.12
+
+  UserDailyActivityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: slidequiz-api-UserDailyActivity
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: date
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
 
 Outputs:
   ApiUrl:
@@ -101,3 +120,6 @@ Outputs:
   UserStatsTableNameOutput:
     Description: ユーザー集計情報を保存するDynamoDBテーブル名
     Value: slidequiz-api-UserStats
+  UserDailyActivityTableNameOutput:
+    Description: ユーザー日別アクセス集計を保存するDynamoDBテーブル名
+    Value: slidequiz-api-UserDailyActivity

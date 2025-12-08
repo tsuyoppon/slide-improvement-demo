@@ -5,12 +5,13 @@ import os
 from typing import List, Optional
 from decimal import Decimal
 import boto3
-from boto3.dynamodb.conditions import Key
-from .models import QuizSession, UserStats
+from boto3.dynamodb.conditions import Key, Attr
+from .models import QuizSession, UserStats, UserDailyActivity, _utc_now_iso
 
 # 環境変数から設定を取得
 SESSION_TABLE_NAME = os.environ.get("SESSION_TABLE_NAME")
 USER_STATS_TABLE_NAME = os.environ.get("USER_STATS_TABLE_NAME")
+USER_DAILY_ACTIVITY_TABLE_NAME = os.environ.get("USER_DAILY_ACTIVITY_TABLE_NAME")
 
 # DynamoDB クライアント
 dynamodb = boto3.resource("dynamodb")
@@ -138,3 +139,53 @@ class StatsService:
             self.update_user_stats(stats)
         
         return stats
+
+    def increment_access(self, user_id: str, accessed_at: Optional[str] = None) -> UserStats:
+        """アクセス回数を原子的にインクリメントし、最終アクセス日時を更新"""
+        ts = accessed_at or _utc_now_iso()
+        response = self.table.update_item(
+            Key={"user_id": user_id},
+            UpdateExpression=(
+                "SET access_count = if_not_exists(access_count, :zero) + :inc, "
+                "last_access_at = :ts, updated_at = :ts"
+            ),
+            ExpressionAttributeValues={
+                ":inc": Decimal(1),
+                ":zero": Decimal(0),
+                ":ts": _float_to_decimal(ts),
+            },
+            ReturnValues="ALL_NEW",
+        )
+        return UserStats(**_decimal_to_float(response["Attributes"]))
+
+
+class DailyActivityService:
+    """ユーザーの日別アクセス集計サービス"""
+
+    def __init__(self):
+        if not USER_DAILY_ACTIVITY_TABLE_NAME:
+            raise ValueError("USER_DAILY_ACTIVITY_TABLE_NAME environment variable is not set")
+        self.table = dynamodb.Table(USER_DAILY_ACTIVITY_TABLE_NAME)
+
+    def increment_daily_login(self, user_id: str, date_str: str) -> UserDailyActivity:
+        """日別ログイン回数を原子的にインクリメント"""
+        response = self.table.update_item(
+            Key={"user_id": user_id, "date": date_str},
+            UpdateExpression="SET login_count = if_not_exists(login_count, :zero) + :inc, updated_at = :now",
+            ExpressionAttributeValues={
+                ":inc": Decimal(1),
+                ":zero": Decimal(0),
+                ":now": _float_to_decimal(_utc_now_iso()),
+            },
+            ReturnValues="ALL_NEW",
+        )
+
+        return UserDailyActivity(**_decimal_to_float(response["Attributes"]))
+
+    def list_by_date(self, date_str: str, limit: int = 200) -> List[UserDailyActivity]:
+        """指定日付の全ユーザー分を取得（簡易のため Scan を使用）"""
+        response = self.table.scan(
+            FilterExpression=Attr("date").eq(date_str),
+            Limit=limit,
+        )
+        return [UserDailyActivity(**_decimal_to_float(item)) for item in response.get("Items", [])]

@@ -67,7 +67,7 @@ class QuizSession(BaseModel):
 
 
 class UserStats(BaseModel):
-    """ユーザーの集計統計"""
+    """ユーザーの集計統計 + アクセス情報"""
     user_id: str
     total_sessions: int = 0
     total_questions_answered: int = 0
@@ -75,6 +75,9 @@ class UserStats(BaseModel):
     average_score: float = 0.0
     best_score: float = 0.0
     last_quiz_date: Optional[str] = None
+    # アクセス集計
+    access_count: int = 0
+    last_access_at: Optional[str] = None
     updated_at: str = Field(default_factory=_utc_now_iso)
     improvement_item_stats: Dict[str, Dict[str, int]] = Field(default_factory=dict)
     
@@ -97,6 +100,12 @@ class UserStats(BaseModel):
         self.last_quiz_date = session.session_end_ts
         self.updated_at = _utc_now_iso()
 
+    def update_access(self, accessed_at: Optional[str] = None) -> None:
+        """アクセス時に呼び出し、回数と最終日時を更新"""
+        self.access_count += 1
+        self.last_access_at = accessed_at or _utc_now_iso()
+        self.updated_at = _utc_now_iso()
+
 
 class SaveSessionRequest(BaseModel):
     """セッション保存リクエスト"""
@@ -115,3 +124,11 @@ class UserStatsResponse(BaseModel):
     """ユーザー統計レスポンス"""
     stats: UserStats
     recent_sessions: List[QuizSession]
+
+
+class UserDailyActivity(BaseModel):
+    """ユーザーの日別アクティビティ（ログイン/アクセス）"""
+    user_id: str
+    date: str  # YYYY-MM-DD
+    login_count: int = 0
+    updated_at: str = Field(default_factory=_utc_now_iso)

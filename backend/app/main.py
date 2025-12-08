@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, UTC, timedelta
 from typing import List, Optional
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -16,7 +17,7 @@ from .models import (
     UserStatsResponse,
     QuestionResult,
 )
-from .db_service import SessionService, StatsService
+from .db_service import SessionService, StatsService, DailyActivityService
 
 
 # Dev CORS (allow all for local testing)
@@ -99,6 +100,12 @@ DEFAULT_QUIZ_ID: Optional[str] = next(iter(_QUIZZES.keys()), None)
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+def _ensure_admin(user: dict):
+    groups = user.get("cognito:groups") or []
+    if "Admin" not in groups:
+        raise HTTPException(status_code=403, detail="Admin access required")
 
 
 @app.get("/api/quiz", response_model=QuizItem)
@@ -226,6 +233,12 @@ async def get_user_stats(
     
     stats_service = StatsService()
     session_service = SessionService()
+    daily_service = DailyActivityService()
+
+    # アクセスを集計
+    today_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    stats_service.increment_access(user_id)
+    daily_service.increment_daily_login(user_id, today_str)
     
     user_stats = stats_service.get_or_create_stats(user_id)
     recent_sessions = session_service.get_recent_sessions(user_id, limit=5)
@@ -234,6 +247,63 @@ async def get_user_stats(
         stats=user_stats,
         recent_sessions=recent_sessions
     )
+
+
+@app.get("/api/admin/daily_stats")
+async def get_daily_stats(
+    date: Optional[str] = None,
+    limit: int = 200,
+    user: dict = Depends(get_current_user)
+):
+    """指定日の日別アクセス集計を取得（管理者専用）"""
+    _ensure_admin(user)
+
+    target_date = date or datetime.now(UTC).strftime("%Y-%m-%d")
+    daily_service = DailyActivityService()
+    items = daily_service.list_by_date(target_date, limit=limit)
+
+    total = sum(item.login_count for item in items)
+    per_user = [item.model_dump() for item in items]
+
+    return {
+        "date": target_date,
+        "total": total,
+        "items": per_user,
+    }
+
+
+@app.get("/api/admin/recent_daily_stats")
+async def get_recent_daily_stats(
+    days: int = 10,
+    user: dict = Depends(get_current_user)
+):
+    """過去N日間の日次集計サマリーを取得（管理者専用）"""
+    _ensure_admin(user)
+    
+    daily_service = DailyActivityService()
+    results = []
+    
+    # UTCでの今日を基準に過去へ遡る
+    today = datetime.now(UTC).date()
+    
+    for i in range(days):
+        d = today - timedelta(days=i)
+        date_str = d.strftime("%Y-%m-%d")
+        
+        # 各日のデータを取得して集計
+        # Note: データ量が増えるとScan×N回は重くなるため、将来的には集計テーブルを検討すべき
+        items = daily_service.list_by_date(date_str, limit=1000)
+        
+        total_logins = sum(item.login_count for item in items)
+        unique_users = len(items)
+        
+        results.append({
+            "date": date_str,
+            "total_logins": total_logins,
+            "unique_users": unique_users
+        })
+    
+    return {"stats": results}
 
 
 handler = Mangum(app)

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>スライド改善 学習デモ</title>
+  <title>スライド改善 学習デモ (Admin Preview)</title>
   <!-- Tailwind CSS (CDN) -->
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -726,17 +726,46 @@
         const fetchData = async () => {
           setLoading(true);
           try {
-            // 1. Fetch recent stats summary (past 10 days)
-            const recentRes = await fetchWithAuth(`${API_BASE}/api/admin/recent_daily_stats?days=10`);
-            if (!recentRes.ok) throw new Error(`Failed to fetch recent stats: ${recentRes.status}`);
-            const recentData = await recentRes.json();
-            setRecentStats(recentData.stats || []);
+            // MOCK DATA FOR PREVIEW
+            await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+            
+            // 1. Mock recent stats (past 10 days)
+            const today = new Date();
+            const mockRecentStats = Array.from({ length: 10 }).map((_, i) => {
+              const d = new Date(today);
+              d.setDate(d.getDate() - i);
+              const dateStr = d.toISOString().split('T')[0];
+              return {
+                date: dateStr,
+                total_logins: Math.floor(Math.random() * 50) + 10,
+                unique_users: Math.floor(Math.random() * 20) + 5
+              };
+            });
+            setRecentStats(mockRecentStats);
 
-            // 2. Fetch details for target date
-            const res = await fetchWithAuth(`${API_BASE}/api/admin/daily_stats?date=${targetDate}`);
-            if (!res.ok) throw new Error(`Failed to fetch stats: ${res.status}`);
-            const result = await res.json();
-            setData(result);
+            // 2. Mock daily details for target date
+            const mockResponse = {
+              date: targetDate,
+              total: 45, // Sum of login_counts
+              items: [
+                { user_id: 'user-123-abc', login_count: 5, updated_at: '2025-12-09T10:00:00Z' },
+                { user_id: 'user-456-def', login_count: 3, updated_at: '2025-12-09T09:30:00Z' },
+                { user_id: 'user-789-ghi', login_count: 1, updated_at: '2025-12-09T08:15:00Z' },
+                { user_id: 'user-000-xyz', login_count: 10, updated_at: '2025-12-09T11:20:00Z' },
+                // Generate more mock data
+                ...Array.from({ length: 10 }).map((_, i) => ({
+                  user_id: `user-mock-${i}`,
+                  login_count: Math.floor(Math.random() * 5) + 1,
+                  updated_at: '2025-12-09T12:00:00Z'
+                }))
+              ]
+            };
+            
+            // Calculate total from items if needed, but backend returns it
+            const total = mockResponse.items.reduce((acc, item) => acc + item.login_count, 0);
+            mockResponse.total = total;
+
+            setData(mockResponse);
           } catch (e) {
             setError(e.message || 'データの取得に失敗しました');
           } finally {
@@ -757,7 +786,7 @@
       return (
         <div className="w-full max-w-4xl mx-auto p-6">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold">管理画面 - 日次アクセス詳細</h1>
+            <h1 className="text-2xl font-bold">管理画面 - 日次アクセス詳細 (Preview)</h1>
             <button onClick={onBack} className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded">
               戻る
             </button>
@@ -868,15 +897,18 @@
       const [currentIndex, setCurrentIndex] = useState(0); // plannedIds のインデックス
       const [history, setHistory] = useState([]); // { id, result }
       const [sessionStartTime, setSessionStartTime] = useState(null); // セッション開始時刻
-      const [isAuthenticated, setIsAuthenticated] = useState(false);
-      const [idToken, setIdToken] = useState(null);
-      const [isAdmin, setIsAdmin] = useState(false);
+      
+      // MOCK AUTH STATE FOR PREVIEW
+      const [isAuthenticated, setIsAuthenticated] = useState(true);
+      const [idToken, setIdToken] = useState("mock-token");
+      const [isAdmin, setIsAdmin] = useState(true);
 
       const TOTAL_SETS = 3;
       const PER_SET = 5;
       const TOTAL_QUESTIONS = TOTAL_SETS * PER_SET; // 15
       
-      // 認証チェック
+      // 認証チェック (Disabled for preview)
+      /*
       useEffect(() => {
         const checkAuth = async () => {
           let token = await AUTH_UTILS.ensureValidToken();
@@ -899,22 +931,11 @@
         };
         checkAuth();
       }, []);
+      */
 
       useEffect(() => {
         const handleTokenRefresh = (event) => {
-          const detailProvided = event?.detail && Object.prototype.hasOwnProperty.call(event.detail, 'idToken');
-          const latestIdToken = event?.detail?.idToken ?? window.sessionStorage.getItem('auth.idToken');
-          if (latestIdToken) {
-            setIdToken(latestIdToken);
-            setIsAuthenticated(true);
-            const payload = AUTH_UTILS._parseJwt(latestIdToken);
-            const groups = payload && payload['cognito:groups'] ? payload['cognito:groups'] : [];
-            setIsAdmin(groups.includes('Admin'));
-          } else if (detailProvided) {
-            setIdToken(null);
-            setIsAuthenticated(false);
-            setIsAdmin(false);
-          }
+          // Mock handler
         };
 
         window.addEventListener('auth:tokenRefreshed', handleTokenRefresh);
@@ -925,10 +946,20 @@
         try {
           setLoading(true);
           setError(null);
-          const res = await fetch(`${API_BASE}/api/quiz/${id}`);
-          if (!res.ok) throw new Error(`Failed to fetch quiz ${id}: ${res.status}`);
-          const data = await res.json();
-          setQuiz(data);
+          // Mock quiz data if API fails locally
+          try {
+             const res = await fetch(`${API_BASE}/api/quiz/${id}`);
+             if (!res.ok) throw new Error('API Error');
+             const data = await res.json();
+             setQuiz(data);
+          } catch (e) {
+             // Fallback mock
+             setQuiz({
+                 id: id || '1003',
+                 image_url: '1003.png',
+                 improvements: ['文字サイズ', '配色', 'レイアウト', 'グラフ']
+             });
+          }
         } catch (e) {
           setError(e.message || 'クイズの取得に失敗しました');
         } finally {
@@ -954,10 +985,9 @@
             setError(null);
             // セッション開始時刻を記録
             setSessionStartTime(new Date().toISOString());
-            // まずIDリストを取得
-            const r = await fetch(`${API_BASE}/api/quiz_ids`);
-            if (!r.ok) throw new Error(`Failed to fetch ids: ${r.status}`);
-            const ids = await r.json();
+            
+            // Mock IDs
+            const ids = ['1003', '881'];
             setAllIds(ids);
             // 15問×重複なしの順序を決定
             const planned = sampleWithoutReplacement(ids, TOTAL_QUESTIONS);
@@ -966,10 +996,8 @@
             if (planned.length > 0) {
               await loadQuizById(planned[0]);
             } else {
-              const res = await fetch(`${API_BASE}/api/quiz`);
-              if (!res.ok) throw new Error(`Failed to fetch quiz: ${res.status}`);
-              const data = await res.json();
-              setQuiz(data);
+               // Fallback
+               await loadQuizById('1003');
             }
           } catch (e) {
             setError(e.message || '初期化に失敗しました');
@@ -988,21 +1016,20 @@
 
       const submit = async () => {
         if (!quiz) return;
-        try {
-          const res = await fetch(`${API_BASE}/api/grade`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ quiz_id: quiz.id, selected })
-          });
-          if (!res.ok) throw new Error(`Failed to grade: ${res.status}`);
-          const result = await res.json();
-          setGradeResult(result);
-          // 履歴に追加
-          setHistory((prev) => [...prev, { id: quiz.id, result }]);
-          setPage("evaluation");
-        } catch (e) {
-          alert(e.message || '採点に失敗しました');
-        }
+        // Mock submit
+        const result = {
+            score: 3,
+            total: 4,
+            rows: (quiz.improvements || []).map(item => ({
+                item,
+                answered: selected.includes(item),
+                correct: true, // Mock
+                is_wrong: false // Mock
+            }))
+        };
+        setGradeResult(result);
+        setHistory((prev) => [...prev, { id: quiz.id, result }]);
+        setPage("evaluation");
       };
       const goNext = async () => {
         // 次の問題へ。最後なら総合評価へ。
@@ -1018,76 +1045,14 @@
           }
         } else {
           // 最終問題完了時: セッションをサーバーに保存
-          await saveSessionToServer();
+          // await saveSessionToServer(); // Skip for preview
           setPage("final");
         }
       };
       
       // セッション保存関数
       const saveSessionToServer = async () => {
-        const token = await AUTH_UTILS.ensureValidToken();
-        if (!token) {
-          console.log('Not authenticated, skipping session save');
-          setIsAuthenticated(false);
-          setIdToken(null);
-          return;
-        }
-
-        setIsAuthenticated(true);
-        setIdToken(token);
-        
-        // 履歴から問題結果を構築
-        const questions = history.map(item => {
-          const { id, result } = item;
-          // resultには { score, total, rows } が含まれる
-          const rows = result?.rows || [];
-          const isAllCorrect = result.score === result.total;
-
-          return {
-            question_id: id,
-            user_answer: 'multiple_choice', // 複数選択式
-            correct_answer: 'all_items_correct', // 全項目正解が正答
-            is_correct: isAllCorrect,
-            improvements: rows.map(row => ({
-              label: row.item,
-              answered: row.answered,
-              correct: row.correct,
-              is_correct: !row.is_wrong
-            }))
-          };
-        });
-        
-        const sessionData = {
-          session_start_ts: sessionStartTime || new Date().toISOString(),
-          questions: questions
-        };
-        
-        try {
-          const response = await fetchWithAuth(`${API_BASE}/api/session/save`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(sessionData)
-          });
-
-          if (response.status === 401) {
-            console.error('Failed to save session: token expired');
-            setIsAuthenticated(false);
-            setIdToken(null);
-            return;
-          }
-          
-          if (!response.ok) {
-            console.error('Failed to save session:', response.status);
-            return;
-          }
-          
-          const result = await response.json();
-          console.log('Session saved successfully:', result);
-        } catch (error) {
-          console.error('Error saving session:', error);
-        }
+         // Mock
       };
 
       const restart = async () => {
