@@ -85,7 +85,7 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: slidequiz-api-UserStats
         - DynamoDBCrudPolicy:
-          TableName: slidequiz-api-UserDailyActivity
+            TableName: slidequiz-api-UserDailyActivity
       AutoPublishAlias: live
       ProvisionedConcurrencyConfig: !If
         - UseProvisionedConcurrency
